@@ -26,33 +26,24 @@
 _Portfolio/
 ├── Core/
 │   ├── Config
+│   │   ├── EnemySpawnConfig.cs    — 일반 몹 스폰 설정 SO
+│   │   └── EntitySpawnConfig.cs   — 스폰 설정 SO 추상 베이스
 │   ├── Data
-│   ├── Interfaces
-│   ├── EntityData.cs          — 공통 베이스 데이터 클래스
-│   ├── AllyData.cs            — 아군 데이터 (EntityData 상속, 필드 일부 비공개)
-│   ├── EnemyData.cs           — 적군 데이터 (EntityData 상속)
-│   ├── IEntity.cs             — 스폰 초기화 규약 인터페이스
-│   ├── ITouchable.cs          — 터치 수신 인터페이스
-│   ├── IDamageable.cs         — 피격 처리 인터페이스
-│   ├── StatRange.cs           — 절차적 스탯 생성 구조체 (Float/Int)
-│   ├── EntitySpawnConfig.cs   — 스폰 설정 SO 추상 베이스
-│   ├── EnemySpawnConfig.cs    — 일반 몹 스폰 설정 SO
+│   │   ├── AllyData.cs            — 아군 데이터 (EntityData 상속)
+│   │   ├── EnemyData.cs           — 적군 데이터 (EntityData 상속)
+│   │   └── EntityData.cs          — 공통 베이스 데이터 클래스
+│   └── Interfaces
+│   │   ├── IDamageable.cs         — 피격 처리 인터페이스
+│   │   ├── IEntity.cs             — 스폰 초기화 규약 인터페이스
+│   │   ├── IState.cs              — 제네릭 FSM 상태 인터페이스
+│   │   └── ITouchable.cs          — 터치 수신 인터페이스
 │   ├── EntitySpawner.cs       — Queue 기반 풀링 + 스폰 통합 클래스
-│   ├── CombatConfig.cs        — 전역 전투 수치 SO (스캔 주기, 판정 여유 등)
-│   └── InputManager.cs        — New Input System 기반 통합 입력 매니저
+│   ├── InputManager.cs        — New Input System 기반 통합 입력 매니저
+│   └── StatRange.cs           — 절차적 스탯 생성 구조체 (Float/Int)
 └── Entity/
-    ├── IState.cs              — 제네릭 FSM 상태 인터페이스
-    ├── Unit.cs                — 비제네릭 베이스 + CRTP 중간 계층
-    ├── Ally.cs                — 아군 컴포넌트 (CRTP 구조 시연, 일부 로직 비공개)
-    ├── CombatController.cs    — 선딜/후딜 공격 사이클 컴포넌트
-    ├── MovementController.cs  — Separation 기반 충돌 회피 이동
-    ├── TargetScanner.cs       — 분산 스캔 타겟 탐지 컴포넌트
-    └── Enemy/
-        ├── Enemy.cs           — 적군 공통 제네릭 중간 계층
-        ├── MonsterSpawner.cs  — 웨이브 스폰 매니저
-        └── Monster/
-            ├── Monster.cs     — 일반 몹 컴포넌트
-            └── MonsterStates.cs — Idle / Chase / Combat / Dead FSM 구현
+    ├── Ally.cs                — 아군 컴포넌트 (CRTP 구조)
+    ├── Enemy.cs           — 적군 공통 제네릭 중간 계층
+    └── Unit.cs                — 비제네릭 베이스 + CRTP 중간 계층
 ```
 
 ---
@@ -68,7 +59,7 @@ Unit (비제네릭 — IDamageable, List<Unit> 기반)
 └── Unit<TUnit, TData> (CRTP 중간 계층 — FSM 구동부, OnDied 이벤트)
     ├── Ally                 ← IState<Ally>, OnHyped: Action<Ally>
     └── Enemy<TEnemy, TData>
-        ├── Monster             ← MonsterStates.cs 참조
+        ├── Monster          
         └── Boss (스탯)
 ```
  
@@ -93,19 +84,6 @@ public class Ally : Unit<Ally, AllyData>, ITouchable
  
     // Hype 이벤트 — Unit<Ally, AllyData>를 상속했으므로 Action<Ally>로 구성됨
     public event Action<Ally> OnHyped;
-}
-```
- 
-**Monster에서 보이는 CRTP 포인트:**
- 
-```csharp
-// CRTP 덕분에 OnDied가 Action<Monster>로 정확히 타입 매핑됨
-// — 캐스팅 없이 Monster를 직접 받을 수 있음
-monster.OnDied += HandleMonsterDied;
- 
-private void HandleMonsterDied(Monster monster)
-{
-    Despawn(monster); // EntitySpawner<Monster, EnemyData>
 }
 ```
  

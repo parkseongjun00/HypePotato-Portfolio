@@ -18,18 +18,6 @@
 > **원본 프로젝트는 비공개입니다.**  
 > 이 저장소는 선별한 코드 샘플만 담고 있습니다.
 
-### 제외된 파일과 이유
-
-아래 파일들은 게임의 핵심 IP를 포함하므로 공개하지 않음을 양해 부탁드립니다.
-
-| 제외 / 추상화 파일 | 사유 |
-|---|---|
-| `Ally.cs` (✅ 부분 공개) | 클래스 선언과 CRTP 구조는 코드에 포함. `OnReceiveTouch` 내부 로직만 비공개. |
-| `AllyData.cs` (✅ 부분 공개) | 상속 구조만 포함. Hype 시스템 관련 필드는 비공개. |
-| `AllyStates.cs` | Hidden/Idle/Combat 전환 로직이 게임 플레이 정체성과 직결 |
-| `AllySpawnConfig.cs` | 아군 유닛 밸런스 설계 데이터 |
-| `AllySpawner.cs` | 위 파일들에 직접 의존 |
-
 ---
 
 ## 파일 구조
@@ -37,6 +25,9 @@
 ```
 _Portfolio/
 ├── Core/
+│   ├── Config
+│   ├── Data
+│   ├── Interfaces
 │   ├── EntityData.cs          — 공통 베이스 데이터 클래스
 │   ├── AllyData.cs            — 아군 데이터 (EntityData 상속, 필드 일부 비공개)
 │   ├── EnemyData.cs           — 적군 데이터 (EntityData 상속)

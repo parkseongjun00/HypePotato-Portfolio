@@ -201,53 +201,6 @@ public class MonsterStateIdle : IState<Monster>
 
 ---
 
-### 5. 성능 최적화
-
-| 기법 | 위치 | 효과 |
-|---|---|---|
-| `OverlapCircleNonAlloc` | `TargetScanner`, `MovementController` | 매 프레임 배열 할당(GC) 제거 |
-| `sqrMagnitude` 거리 비교 | `MonsterStates`, `CombatController` | `Mathf.Sqrt` 연산 비용 절감 |
-| 스캔 타이밍 분산 (Staggering) | `TargetScanner.ScanRoutine()` | 다수 유닛의 스캔이 한 프레임에 몰리는 CPU 스파이크 방지 |
-| Queue 기반 오브젝트 풀 | `EntitySpawner` | `Instantiate` / `Destroy` GC 부담 제거 |
-| 드래그 임계값 필터 | `InputManager` | 불필요한 Raycast 억제 |
-
----
-
-### 6. 선딜/후딜 공격 사이클 (`CombatController`)
-
-리그 오브 레전드식 Wind-up / Wind-down 구조로 공격 타이밍을 제어합니다.  
-선딜 종료 시점에 사거리를 재검증하여 타겟이 도망간 경우를 처리합니다.
-
-```csharp
-// 쿨타임 = 1 / 공격속도
-float totalCooldown = 1.0f / attackSpeed;
-
-yield return new WaitForSeconds(totalCooldown * windUpRatio);   // 선딜
-
-// 선딜 종료 시점에 사거리 재검증
-if (sqrDistance <= (attackRange + leeway) * (attackRange + leeway))
-    onHit?.Invoke();
-else
-    onMiss?.Invoke();
-
-yield return new WaitForSeconds(totalCooldown * (1f - windUpRatio)); // 후딜
-```
-
----
-
-### 7. 탭/드래그 분리 입력 (`InputManager`)
-
-New Input System의 `Pointer.current`를 활용해 마우스와 모바일 터치를 통합 처리합니다.  
-드래그 임계값을 픽셀 단위로 판별하여 의도하지 않은 탭 발생을 방지합니다.
-
-```
-press.wasPressedThisFrame  → 시작 위치 기록
-press.isPressed            → 이동 거리 >= dragThreshold? → IsDragging = true
-press.wasReleasedThisFrame → IsDragging이 아닐 때만 → Raycast → ITouchable.OnReceiveTouch()
-```
-
----
-
 ## 의존 관계 요약
 
 ```

@@ -8,28 +8,27 @@
 
 ## 게임 개요
 
-전장 곳곳에 숨어 있는 아군 유닛들을 터치로 찾아내어 영입시키고,  
-영입된 유닛들이 밀려오는 적을 자동으로 상대하는 방어전 게임입니다.
+전장 곳곳에 숨어 있는 아군 유닛(게임에서는 감자, 고구마 등으로 표현)들을 찾아내어 터치로 아군으로 영입하고,  
+영입된 유닛들이 밀려오는 적을 자동으로 상대하는 레이드 게임입니다.
 
 ---
 
 ## 이 저장소에 대해
 
 > **원본 프로젝트는 비공개입니다.**  
-> 이 저장소는 아키텍처 역량 시연을 위해 선별한 코드 샘플만 담고 있습니다.
+> 이 저장소는 선별한 코드 샘플만 담고 있습니다.
 
 ### 제외된 파일과 이유
 
-아래 파일들은 게임의 핵심 IP를 포함하므로 공개하지 않습니다.
+아래 파일들은 게임의 핵심 IP를 포함하므로 공개하지 않음을 양해 부탁드립니다.
 
 | 제외 / 추상화 파일 | 사유 |
 |---|---|
-| `Ally.cs` (✅ 부분 공개) | 클래스 선언과 CRTP 구조는 코드에 포함. `HandleHypedAction` 내에 구현 / `OnReceiveTouch` 내부 로직만 비공개. |
+| `Ally.cs` (✅ 부분 공개) | 클래스 선언과 CRTP 구조는 코드에 포함. `OnReceiveTouch` 내부 로직만 비공개. |
 | `AllyData.cs` (✅ 부분 공개) | 상속 구조만 포함. Hype 시스템 관련 필드는 비공개. |
-| `AllyStates.cs` | Hidden/Idle/Combat 전환 로직이 게임 플레이 정체성과 직결됨 |
+| `AllyStates.cs` | Hidden/Idle/Combat 전환 로직이 게임 플레이 정체성과 직결 |
 | `AllySpawnConfig.cs` | 아군 유닛 밸런스 설계 데이터 |
 | `AllySpawner.cs` | 위 파일들에 직접 의존 |
-| `Boss.cs` / `BossStates.cs` / `BossData.cs` / `BossSpawnConfig.cs` / `BossSpawner.cs` | 보스 기미 로직 미구현 상태 — 아키텍처는 Monster와 동일하므로 중복 포함 실익 없음 |
 
 ---
 
@@ -70,9 +69,11 @@ _Portfolio/
 ## 핵심 기술 포인트
 
 ### 1. CRTP 기반 다단계 제네릭 계층
-
-캐스팅 없이 타입 안전한 이벤트와 상태 전환을 구현합니다.
-
+ 
+유닛 종류가 늘어날수록 '공통으로 처리해야 하는 부분'과 '이 유닛만 신경 써야 하는 부분'이 점점 헷갈리기 시작했습니다.
+그래서 공통 로직은 최대한 상위 계층(`Unit<TUnit, TData>`)으로 위임하고, 각 유닛은 자기한테 정말 필요한 부분에만 집중할 수 있도록 구조를 잡았습니다.
+공통 로직을 한 곳에 모아두면 수정할 때도 한 군데만 고치면 되고, 새로운 유닛을 추가하는 입장에서도 "내가 뭘 신경 써야 하지?"에 대한 고민이 줄어듭니다.
+ 
 ```
 Unit (비제네릭 — IDamageable, List<Unit> 기반)
 └── Unit<TUnit, TData> (CRTP 중간 계층 — FSM 구동부, OnDied 이벤트)
@@ -81,9 +82,9 @@ Unit (비제네릭 — IDamageable, List<Unit> 기반)
         ├── Monster             ← MonsterStates.cs 참조
         └── Boss (스탯)
 ```
-
+ 
 **Ally에서 보이는 CRTP 포인트:**
-
+ 
 ```csharp
 // 자기 자신을 타입 인수로 전달 (Curiously Recurring Template Pattern)
 // → Unit<T,T> 안에서 Action<TUnit>(직접 구체 타입)으로 OnDied가 조성됨
@@ -94,42 +95,43 @@ public class Ally : Unit<Ally, AllyData>, ITouchable
     public IState<Ally> IdleState   { get; private set; }
     public IState<Ally> CombatState { get; private set; }
     public IState<Ally> StateDead   { get; private set; }
-
+ 
     // 스폰 맥락에 따라 초기 상태를 결정하는 템플릿 메서드 오버라이드
     protected override IState<Ally> GetInitialState(bool isPreExisting)
     {
         return isPreExisting ? IdleState : HiddenState;
     }
-
+ 
     // Hype 이벤트 — Unit<Ally, AllyData>를 상속했으므로 Action<Ally>로 구성됨
     public event Action<Ally> OnHyped;
 }
 ```
-
+ 
 **Monster에서 보이는 CRTP 포인트:**
-
+ 
 ```csharp
 // CRTP 덕분에 OnDied가 Action<Monster>로 정확히 타입 매핑됨
 // — 캐스팅 없이 Monster를 직접 받을 수 있음
 monster.OnDied += HandleMonsterDied;
-
+ 
 private void HandleMonsterDied(Monster monster)
 {
     Despawn(monster); // EntitySpawner<Monster, EnemyData>
 }
 ```
-
+ 
 ---
-
+ 
 ### 2. 오브젝트 풀링 (`EntitySpawner<TEntity, TData>`)
-
-`Instantiate` 남발을 방지합니다. Queue로 비활성 오브젝트를 재사용하며,  
-새로운 유닛 타입 추가 시 **한 줄** 상속으로 확장됩니다.
-
+ 
+레이드 게임 특성상 씬 내에 유닛이 많이 존재합니다. 이전 프로젝트에서의 경험을 생각했을 때, 
+`Instantiate`/`Destroy`를 개별적으로 호출하면 GC 부하에 따른 성능 저하가 예상되기에 비활성화된 오브젝트를 Queue에 쌓아두고 재사용하는 풀링 구조를 적용했습니다.
+또한 새로운 유닛 타입을 추가할 때 별도 풀링 로직을 구현할 필요 없이 한 줄 상속으로 끝나도록 만들었습니다.
+ 
 ```csharp
 // 적군 추가: 한 줄로 완성
 public class MonsterSpawner : EntitySpawner<Monster, EnemyData> { }
-
+ 
 // 내부: 풀에 여분이 있으면 재사용, 없으면 그때만 Instantiate
 private TEntity GetFromQueue()
 {
@@ -142,21 +144,22 @@ private TEntity GetFromQueue()
     return Instantiate(spawnConfig.prefab).GetComponent<TEntity>();
 }
 ```
-
+ 
 ---
-
+ 
 ### 3. 절차적 스탯 생성 (`StatRange`)
-
-템플릿 SO 없이 **평균값 ± 오차 범위** 방식으로 매 스폰마다 고유한 개체를 생성합니다.  
-하위 클래스는 `RollRandomStats()`를 override하여 전용 필드만 추가합니다.
-
+ 
+주요 게임 철학 중에 유닛들이 개별적으로 고유한 정체성을 가져서 플레이어가 개별 유닛들에게 애정을 가질 수 있는 환경을 원했습니다.
+이에 따른 노력 중 하나로, 유닛들이 개별적인 스탯을 가져 정체성이 더욱 두드러지길 원하면서도 평균 내 오차 범위를 가져 밸런스가 파괴되지 않기를 바랐습니다.
+유닛의 고유 스탯을 가리키고 오차 범위 내 값을 생성하는 구조체를 정의하여 이를 구현하였습니다.
+ 
 ```csharp
 // 인스펙터: baseValue=100, variance=20 → HP가 80~120 사이 랜덤 결정
 public int Roll()
 {
     return Mathf.Max(0, Random.Range(baseValue - variance, baseValue + variance + 1));
 }
-
+ 
 // 적군 스폰 설정 예시 — RollRandomStats() 오버라이드 체인
 public class EnemySpawnConfig : EntitySpawnConfig<EnemyData>
 {
@@ -171,48 +174,18 @@ public class EnemySpawnConfig : EntitySpawnConfig<EnemyData>
 
 ---
 
-### 4. 이벤트 기반 제네릭 FSM
-
-`IState<TEntity>` 제네릭 인터페이스로 **캐스팅 없이** 각 유닛 타입에 맞는 상태를 구현합니다.  
-타겟 탐지는 폴링 대신 `TargetScanner` 이벤트를 구독하여 Update 부하를 제거합니다.
-
-```csharp
-// IState<Monster> — Monster를 직접 받으므로 캐스팅 불필요
-public class MonsterStateIdle : IState<Monster>
-{
-    private void OnTargetAcquired(Transform _)
-    {
-        _cachedMonster.ChangeState(_cachedMonster.ChaseState);
-    }
-
-    public void Enter(Monster monster)
-    {
-        // 폴링(Update 매 프레임 체크) 대신 이벤트 구독
-        monster.TargetScanner.OnTargetAcquired += OnTargetAcquired;
-    }
-
-    public void Exit(Monster monster)
-    {
-        // 반드시 구독 해제 — 메모리 누수 방지
-        monster.TargetScanner.OnTargetAcquired -= OnTargetAcquired;
-    }
-}
-```
-
----
-
 ## 의존 관계 요약
 
 ```
-InputManager ──── ITouchable ──────────────────────────── Ally (미공개)
+InputManager ──── ITouchable ───────────────────────────────── Ally 
                                                                 │
-EntitySpawner<T,T> ── EntitySpawnConfig<T> ── StatRange        │
+EntitySpawner<T,T> ── EntitySpawnConfig<T> ── StatRange         │
         │                                                       │
         ▼                                                       ▼
   Unit (IDamageable)                                      Unit<T,T> (FSM)
         │                                                       │
         └── Enemy<T,T> ── Monster ── MonsterStates (IState<Monster>)
-                       └── Boss   (미공개 — 로직 미구현)
+                       └── Boss
 
                          TargetScanner ◄── CombatConfig (SO)
                          MovementController
